@@ -1,16 +1,16 @@
 <h1>{{header}}</h1>
-{{#list}}
+{#list}
   <ul>
-  {{#item}}
-  {{#current}}
+  {#item}
+  {#current}
   <li><strong>{{name}}</strong></li>
-  {{/current}}
-  {{#link}}
+  {/current}
+  {#link}
   <li><a href="{{url}}">{{name}}</a></li>
-  {{/link}}
-  {{/item}}
+  {/link}
+  {/item}
   </ul>
-{{/list}}
-{{#empty}}
+{/list}
+{#empty}
   <p>The list is empty.</p>
-{{/empty}}
+{/empty}

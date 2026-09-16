@@ -1,7 +1,7 @@
-var fs = require('fs');
-var path = require('path');
+import fs from 'fs';
+import path from 'path';
 
-var _files = path.join(__dirname, '_files');
+var _files = path.join(import.meta.dirname, '_files');
 
 function getContents (testName, ext) {
   try {
@@ -51,6 +51,6 @@ function getTest (testName) {
   };
 }
 
-exports.getTests = function getTests () {
+export function getTests () {
   return testNames.map(getTest);
-};
+}

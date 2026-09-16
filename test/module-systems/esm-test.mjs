@@ -1,5 +1,5 @@
 import assert from 'assert';
-import mustache from 'mustache/mustache.mjs';
+import mustache from 'tmplat-mustache';
 
 const view = {
   title: 'Joe',
@@ -7,6 +7,6 @@ const view = {
 };
 
 assert.strictEqual(
-  mustache.render('{{title}} spends {{calc}}', view),
+  await mustache.render('{title} spends {calc}', view),
   'Joe spends 6'
 );

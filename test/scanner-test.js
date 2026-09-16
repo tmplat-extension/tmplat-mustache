@@ -1,4 +1,4 @@
-require('./helper');
+import './helper.js';
 var Scanner = Mustache.Scanner;
 
 describe('A new Mustache.Scanner', function () {

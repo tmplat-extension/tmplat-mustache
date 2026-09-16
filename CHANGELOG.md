@@ -3,6 +3,44 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## [5.0.0] / 16 September 2026
+
+First release of `tmplat-mustache`, a fork of [mustache.js](https://github.com/janl/mustache.js) 4.2.0 built for the
+[tmplat](https://tmplat.com) browser extension.
+
+**This is not a drop-in replacement for mustache.js.** Every change below is breaking.
+
+### Changed
+
+* Default delimiters are single braces: `{name}`, `{#name}`, `{^name}`, `{>partial}`, `{!comment}`, `{=<% %>=}`. As a
+  result a lone `{` in template text now opens a tag, so text containing braces has to change the delimiters first.
+* Escaping is inverted. `{name}` is unescaped, while `{{name}}` and `{&name}` are HTML-escaped.
+* Name resolution is case-insensitive, by exact match first and a case-insensitive match second.
+* Rendering is asynchronous. `render`, the `Writer` render methods and `Context.lookup` all return promises, and any
+  promise a view or lambda returns is awaited. Tokens are awaited sequentially, so side effects stay in template
+  order, and an invalid template now rejects rather than throwing synchronously.
+* Values are resolved before being written: functions are called until they yield a non-function (so a value tag can
+  never stringify a function into the output), arrays become their elements joined with `,`, and plain objects become
+  their non-null own property values joined with `,`.
+* Published as an ECMAScript module only. There is no CommonJS, UMD, AMD or global build, no minified bundle and no
+  build step, so `mustache.js` is both the source and the entry point.
+* TypeScript definitions ship in the package as `index.d.ts`, replacing `@types/mustache`.
+
+### Removed
+
+* The `mustache` command line tool.
+* The library wrappers for Dojo, jQuery, MooTools, qooxdoo and YUI3, and the Rakefile that built them.
+* Browser test infrastructure: zuul, Sauce Labs and the puppeteer-driven module system tests.
+* The [mustache spec](https://github.com/mustache/spec) submodule and its test runner, which no fork that changes the
+  mustache syntax can pass.
+* Travis CI, replaced by GitHub Actions running lint and tests on Node.js 22 and 24.
+
+### Internal
+
+* The test suite, its helpers and the package usage workflow are native ESM, dropping the `esm` loader shim that
+  cannot run on Node.js 24.
+* Linting moved to ESLint 10 and its flat config.
+
 ## [4.2.0] / 28 March 2021
 
 ### Added

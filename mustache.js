@@ -1,15 +1,30 @@
 /*!
- * mustache.js - Logic-less {{mustache}} templates with JavaScript
- * http://github.com/janl/mustache.js
+ * tmplat-mustache - A fork of mustache.js for the tmplat browser extension
+ * http://github.com/tmplat-extension/tmplat-mustache
  */
 
 var objectToString = Object.prototype.toString;
+var objectHasOwnProperty = Object.prototype.hasOwnProperty;
 var isArray = Array.isArray || function isArrayPolyfill (object) {
   return objectToString.call(object) === '[object Array]';
 };
 
 function isFunction (object) {
   return typeof object === 'function';
+}
+
+/**
+ * Whether the given thing is a plain object (and not an array, function, `null`, ...).
+ */
+function isObject (object) {
+  return objectToString.call(object) === '[object Object]';
+}
+
+/**
+ * Whether the given thing is "thenable", i.e. a promise or promise-like object.
+ */
+function isThenable (object) {
+  return object != null && (typeof object === 'object' || isFunction(object)) && isFunction(object.then);
 }
 
 /**
@@ -25,11 +40,51 @@ function escapeRegExp (string) {
 }
 
 /**
+ * Resolves the *actual* property name on `obj` that matches `propName`, ignoring case.
+ *
+ * Tag resolution is deliberately case-insensitive (`{Title}`, `{TITLE}` and `{title}` are the same tag), so
+ * an exact match is preferred and a case-insensitive match is used as a fallback. Returns `undefined` when there is
+ * no match at all, which callers use to distinguish "absent" from "present but `undefined`".
+ */
+function findPropertyName (obj, propName) {
+  if (obj == null || typeof obj !== 'object') return undefined;
+  if (propName in obj) return propName;
+
+  var lowerPropName = propName.toLowerCase();
+  if (lowerPropName !== propName && lowerPropName in obj) return lowerPropName;
+
+  for (var key in obj) {
+    if (key.toLowerCase() === lowerPropName) return key;
+  }
+
+  return undefined;
+}
+
+/**
  * Null safe way of checking whether or not an object,
  * including its prototype, has a given property
  */
 function hasProperty (obj, propName) {
-  return obj != null && typeof obj === 'object' && (propName in obj);
+  return findPropertyName(obj, propName) !== undefined;
+}
+
+/**
+ * Null safe, case-insensitive way of reading a property from an object.
+ */
+function getProperty (obj, propName) {
+  if (obj == null) return undefined;
+
+  // Autoboxed primitives have no enumerable keys to match against, so read from them directly. Dot notation relies on
+  // this to reach properties such as a string's `length`.
+  if (typeof obj !== 'object') {
+    var value = obj[propName];
+
+    return value === undefined ? obj[propName.toLowerCase()] : value;
+  }
+
+  var name = findPropertyName(obj, propName);
+
+  return name === undefined ? undefined : obj[name];
 }
 
 /**
@@ -41,7 +96,7 @@ function primitiveHasOwnProperty (primitive, propName) {
     primitive != null
     && typeof primitive !== 'object'
     && primitive.hasOwnProperty
-    && primitive.hasOwnProperty(propName)
+    && (primitive.hasOwnProperty(propName) || primitive.hasOwnProperty(propName.toLowerCase()))
   );
 }
 
@@ -390,12 +445,13 @@ Context.prototype.push = function push (view) {
  * Returns the value of the given name in this context, traversing
  * up the context hierarchy if the value is absent in this context's view.
  */
-Context.prototype.lookup = function lookup (name) {
+Context.prototype.lookup = async function lookup (name) {
   var cache = this.cache;
+  var cacheKey = name.toLowerCase();
 
   var value;
-  if (cache.hasOwnProperty(name)) {
-    value = cache[name];
+  if (cache.hasOwnProperty(cacheKey)) {
+    value = cache[cacheKey];
   } else {
     var context = this, intermediateValue, names, index, lookupHit = false;
 
@@ -429,10 +485,10 @@ Context.prototype.lookup = function lookup (name) {
               || primitiveHasOwnProperty(intermediateValue, names[index])
             );
 
-          intermediateValue = intermediateValue[names[index++]];
+          intermediateValue = getProperty(intermediateValue, names[index++]);
         }
       } else {
-        intermediateValue = context.view[name];
+        intermediateValue = getProperty(context.view, name);
 
         /**
          * Only checking against `hasProperty`, which always returns `false` if
@@ -464,13 +520,13 @@ Context.prototype.lookup = function lookup (name) {
       context = context.parent;
     }
 
-    cache[name] = value;
+    cache[cacheKey] = value;
   }
 
   if (isFunction(value))
     value = value.call(this.view);
 
-  return value;
+  return isThenable(value) ? await value : value;
 };
 
 /**
@@ -543,7 +599,7 @@ Writer.prototype.parse = function parse (template, tags) {
  * If an `escape` function is not provided, then an HTML-safe string
  * escaping function is used as the default.
  */
-Writer.prototype.render = function render (template, view, partials, config) {
+Writer.prototype.render = async function render (template, view, partials, config) {
   var tags = this.getConfigTags(config);
   var tokens = this.parse(template, tags);
   var context = (view instanceof Context) ? view : new Context(view, undefined);
@@ -559,7 +615,7 @@ Writer.prototype.render = function render (template, view, partials, config) {
  * If the template doesn't use higher-order sections, this argument may
  * be omitted.
  */
-Writer.prototype.renderTokens = function renderTokens (tokens, context, partials, originalTemplate, config) {
+Writer.prototype.renderTokens = async function renderTokens (tokens, context, partials, originalTemplate, config) {
   var buffer = '';
 
   var token, symbol, value;
@@ -568,11 +624,14 @@ Writer.prototype.renderTokens = function renderTokens (tokens, context, partials
     token = tokens[i];
     symbol = token[0];
 
-    if (symbol === '#') value = this.renderSection(token, context, partials, originalTemplate, config);
-    else if (symbol === '^') value = this.renderInverted(token, context, partials, originalTemplate, config);
-    else if (symbol === '>') value = this.renderPartial(token, context, partials, config);
-    else if (symbol === '&') value = this.unescapedValue(token, context);
-    else if (symbol === 'name') value = this.escapedValue(token, context, config);
+    // Tokens are rendered sequentially, and never in parallel: a template may contain entries with side effects
+    // whose order is observable, and buffering requires order anyway.
+    if (symbol === '#') value = await this.renderSection(token, context, partials, originalTemplate, config);
+    else if (symbol === '^') value = await this.renderInverted(token, context, partials, originalTemplate, config);
+    else if (symbol === '>') value = await this.renderPartial(token, context, partials, config);
+    // Note: `&` escapes and `name` does not, which is the inverse of stock mustache.js.
+    else if (symbol === '&') value = await this.escapedValue(token, context, config);
+    else if (symbol === 'name') value = await this.unescapedValue(token, context);
     else if (symbol === 'text') value = this.rawValue(token);
 
     if (value !== undefined)
@@ -582,10 +641,10 @@ Writer.prototype.renderTokens = function renderTokens (tokens, context, partials
   return buffer;
 };
 
-Writer.prototype.renderSection = function renderSection (token, context, partials, originalTemplate, config) {
+Writer.prototype.renderSection = async function renderSection (token, context, partials, originalTemplate, config) {
   var self = this;
   var buffer = '';
-  var value = context.lookup(token[1]);
+  var value = await context.lookup(token[1]);
 
   // This function is used to render an arbitrary template
   // in the current context by higher-order sections.
@@ -597,27 +656,27 @@ Writer.prototype.renderSection = function renderSection (token, context, partial
 
   if (isArray(value)) {
     for (var j = 0, valueLength = value.length; j < valueLength; ++j) {
-      buffer += this.renderTokens(token[4], context.push(value[j]), partials, originalTemplate, config);
+      buffer += await this.renderTokens(token[4], context.push(value[j]), partials, originalTemplate, config);
     }
   } else if (typeof value === 'object' || typeof value === 'string' || typeof value === 'number') {
-    buffer += this.renderTokens(token[4], context.push(value), partials, originalTemplate, config);
+    buffer += await this.renderTokens(token[4], context.push(value), partials, originalTemplate, config);
   } else if (isFunction(value)) {
     if (typeof originalTemplate !== 'string')
       throw new Error('Cannot use higher-order sections without the original template');
 
     // Extract the portion of the original template that the section contains.
-    value = value.call(context.view, originalTemplate.slice(token[3], token[5]), subRender);
+    value = await value.call(context.view, originalTemplate.slice(token[3], token[5]), subRender);
 
     if (value != null)
       buffer += value;
   } else {
-    buffer += this.renderTokens(token[4], context, partials, originalTemplate, config);
+    buffer += await this.renderTokens(token[4], context, partials, originalTemplate, config);
   }
   return buffer;
 };
 
-Writer.prototype.renderInverted = function renderInverted (token, context, partials, originalTemplate, config) {
-  var value = context.lookup(token[1]);
+Writer.prototype.renderInverted = async function renderInverted (token, context, partials, originalTemplate, config) {
+  var value = await context.lookup(token[1]);
 
   // Use JavaScript's definition of falsy. Include empty arrays.
   // See https://github.com/janl/mustache.js/issues/186
@@ -636,11 +695,12 @@ Writer.prototype.indentPartial = function indentPartial (partial, indentation, l
   return partialByNl.join('\n');
 };
 
-Writer.prototype.renderPartial = function renderPartial (token, context, partials, config) {
+Writer.prototype.renderPartial = async function renderPartial (token, context, partials, config) {
   if (!partials) return;
   var tags = this.getConfigTags(config);
 
-  var value = isFunction(partials) ? partials(token[1]) : partials[token[1]];
+  var value = isFunction(partials) ? await partials(token[1]) : partials[token[1]];
+  if (isThenable(value)) value = await value;
   if (value != null) {
     var lineHasNonSpace = token[6];
     var tagIndex = token[5];
@@ -654,15 +714,50 @@ Writer.prototype.renderPartial = function renderPartial (token, context, partial
   }
 };
 
-Writer.prototype.unescapedValue = function unescapedValue (token, context) {
-  var value = context.lookup(token[1]);
+/**
+ * Resolves the value of a name token, collapsing arrays and plain objects to a comma-separated string and *invoking*
+ * a function rather than stringifying it.
+ *
+ * `Context.lookup` has already invoked a function found on the view, so the extra invocation here unwraps a *nested*
+ * function - that is, a section lambda that has been referenced as a plain name tag. Without it the function's own
+ * source code is rendered into the output.
+ */
+Writer.prototype.resolveValue = async function resolveValue (token, context) {
+  var value = await context.lookup(token[1]);
+
+  if (isFunction(value)) {
+    value = await value.call(context.view);
+
+    // Belt and braces: a function must never be stringified into the output.
+    if (isFunction(value)) return undefined;
+  }
+
+  if (isArray(value)) return value.length ? value.join(',') : '';
+
+  if (isObject(value)) {
+    var values = [];
+
+    for (var propName in value) {
+      if (!objectHasOwnProperty.call(value, propName)) continue;
+
+      if (value[propName] != null) values.push(String(value[propName]));
+    }
+
+    return values.join(',');
+  }
+
+  return value;
+};
+
+Writer.prototype.unescapedValue = async function unescapedValue (token, context) {
+  var value = await this.resolveValue(token, context);
   if (value != null)
     return value;
 };
 
-Writer.prototype.escapedValue = function escapedValue (token, context, config) {
+Writer.prototype.escapedValue = async function escapedValue (token, context, config) {
   var escape = this.getConfigEscape(config) || mustache.escape;
-  var value = context.lookup(token[1]);
+  var value = await this.resolveValue(token, context);
   if (value != null)
     return (typeof value === 'number' && escape === mustache.escape) ? String(value) : escape(value);
 };
@@ -694,8 +789,8 @@ Writer.prototype.getConfigEscape = function getConfigEscape (config) {
 
 var mustache = {
   name: 'mustache.js',
-  version: '4.2.0',
-  tags: [ '{{', '}}' ],
+  version: '5.0.0',
+  tags: [ '{', '}' ],
   clearCache: undefined,
   escape: undefined,
   parse: undefined,
@@ -742,7 +837,7 @@ mustache.parse = function parse (template, tags) {
  * Renders the `template` with the given `view`, `partials`, and `config`
  * using the default writer.
  */
-mustache.render = function render (template, view, partials, config) {
+mustache.render = async function render (template, view, partials, config) {
   if (typeof template !== 'string') {
     throw new TypeError('Invalid template! Template should be a "string" ' +
                         'but "' + typeStr(template) + '" was given as the first ' +

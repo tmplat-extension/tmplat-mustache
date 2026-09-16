@@ -1,7 +1,7 @@
 ({
   number: function (text, render) {
-    return function (text, render) {
-      return +render(text);
+    return async function (text, render) {
+      return +await render(text);
     };
   }
 });

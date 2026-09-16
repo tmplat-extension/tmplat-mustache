@@ -1,12 +1,15 @@
 {
-  "name": "mustache",
-  "version": "4.2.0",
+  "name": "tmplat-mustache",
+  "version": "5.0.0",
   "description": "Logic-less {{mustache}} templates with JavaScript",
-  "author": "mustache.js Authors <http://github.com/janl/mustache.js>",
-  "homepage": "https://github.com/janl/mustache.js",
+  "author": {
+    "name": "airmrcr",
+    "url": "https://github.com/airmrcr"
+  },
+  "homepage": "https://github.com/tmplat-extension/tmplat-mustache",
   "repository": {
     "type": "git",
-    "url": "https://github.com/janl/mustache.js.git"
+    "url": "https://github.com/tmplat-extension/tmplat-mustache.git"
   },
   "keywords": [
     "mustache",
@@ -14,54 +17,31 @@
     "templates",
     "ejs"
   ],
-  "main": "mustache.js",
-  "bin": {
-    "mustache": "./bin/mustache"
-  },
+  "license": "MIT",
+  "type": "module",
+  "types": "./index.d.ts",
   "files": [
-    "bin/",
-    "mustache.mjs",
-    "mustache.min.js",
-    "wrappers/"
+    "mustache.js",
+    "index.d.ts"
   ],
   "exports": {
     ".": {
-      "import": "./mustache.mjs",
-      "require": "./mustache.js"
+      "types": "./index.d.ts",
+      "default": "./mustache.js"
     },
-    "./*": "./*"
-  },
-  "volo": {
-    "url": "https://raw.github.com/janl/mustache.js/{version}/mustache.js"
+    "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "cp mustache.js mustache.mjs && rollup mustache.mjs --file mustache.js --format umd --name Mustache && uglifyjs mustache.js > mustache.min.js",
     "test": "npm run test-lint && npm run test-unit",
-    "test-lint": "eslint mustache.js bin/mustache test/*.js test/**/*.js",
+    "test-lint": "eslint .",
     "test-unit": "mocha --reporter spec test/*-test.js",
     "test-render": "mocha  --reporter spec test/render-test",
-    "pre-test-browser": "node test/create-browser-suite.js",
-    "test-browser": "npm run pre-test-browser && zuul -- test/context-test.js test/parse-test.js test/scanner-test.js test/render-test-browser.js",
-    "test-browser-local": "npm run pre-test-browser && zuul --local 8080 -- test/context-test.js test/scanner-test.js test/parse-test.js test/render-test-browser.js",
-    "postversion": "scripts/bump-version-in-source",
-    "prepublishOnly": "npm run build"
+    "postversion": "node scripts/bump-version-in-source.mjs"
   },
   "devDependencies": {
-    "chai": "^3.4.0",
-    "eslint": "^6.5.1",
-    "esm": "^3.2.25",
-    "jshint": "^2.9.5",
-    "mocha": "^3.0.2",
-    "puppeteer": "^2.0.0",
-    "rollup": "^1.26.3",
-    "uglify-js": "^3.4.6",
-    "zuul": "^3.11.0",
-    "zuul-ngrok": "nolanlawson/zuul-ngrok#patch-1"
-  },
-  "greenkeeper": {
-    "ignore": [
-      "eslint"
-    ]
-  },
-  "license": "MIT"
+    "chai": "^6.2.2",
+    "eslint": "^10.10.0",
+    "globals": "^17.12.0",
+    "mocha": "^12.0.1"
+  }
 }

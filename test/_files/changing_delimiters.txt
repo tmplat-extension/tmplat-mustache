@@ -1,1 +1,1 @@
-foooooooooooooo {{foo}} <b>bar!</b> {{{bar}}}
+foooooooooooooo {{foo}} &lt;b&gt;bar!&lt;&#x2F;b&gt; {{{bar}}}

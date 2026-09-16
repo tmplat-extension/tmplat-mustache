@@ -2,6 +2,6 @@
 * \abc
 * \abc
 <script>
-foo = { bar: 'abc\"xyz\"' };
-foo = { bar: 'x\'y' };
+foo = 'abc\"xyz\"';
+foo = 'x\'y';
 </script>
