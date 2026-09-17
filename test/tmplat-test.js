@@ -239,3 +239,91 @@ describe('Asynchronous rendering', function () {
     assert.instanceOf(await rejects(promise), TypeError);
   });
 });
+
+/**
+ * Upstream only resolves a lazy value at the *end* of a name lookup, so a full path into one - `{a.b}` where `a` is a
+ * function or a promise - reads `b` off the unresolved value and renders nothing at all. Every entry in tmplat's
+ * template context is lazy, which made dot notation unusable against any of them.
+ */
+describe('Lazy values part-way along a dotted path', function () {
+  it('descends through a function', async function () {
+    assert.equal(await render('{a.b}', { a: function () { return { b: 'c' }; } }), 'c');
+  });
+
+  it('descends through a promise', async function () {
+    assert.equal(await render('{a.b}', { a: Promise.resolve({ b: 'c' }) }), 'c');
+  });
+
+  it('descends through an asynchronous function', async function () {
+    assert.equal(await render('{a.b}', { a: async function () { return { b: 'c' }; } }), 'c');
+  });
+
+  it('descends through several lazy values in one path', async function () {
+    var view = { a: async function () { return { b: function () { return { c: Promise.resolve({ d: 'e' }) }; } }; } };
+
+    assert.equal(await render('{a.b.c.d}', view), 'e');
+  });
+
+  it('resolves a lazy value in a section name', async function () {
+    var view = { a: async function () { return { b: true }; } };
+
+    assert.equal(await render('{#a.b}yes{/a.b}', view), 'yes');
+  });
+
+  it('resolves a lazy value in an inverted section name', async function () {
+    var view = { a: async function () { return { b: false }; } };
+
+    assert.equal(await render('{^a.b}no{/a.b}', view), 'no');
+  });
+
+  it('calls a lazy value with the view as its receiver', async function () {
+    var view = {
+      name: 'tmplat',
+      a: function () { return { b: this.name }; }
+    };
+
+    assert.equal(await render('{a.b}', view), 'tmplat');
+  });
+
+  /**
+   * The final segment is still resolved after the loop, so a function at the end of a path keeps its higher-order
+   * section behaviour rather than being called early as a plain value.
+   */
+  it('leaves the value at the end of the path to be resolved as a section lambda', async function () {
+    var view = {
+      a: function () {
+        return {
+          upper: function () {
+            return async function (text, renderText) {
+              return (await renderText(text)).toUpperCase();
+            };
+          }
+        };
+      },
+      name: 'tmplat'
+    };
+
+    assert.equal(await render('{#a.upper}{name}{/a.upper}', view), 'TMPLAT');
+  });
+
+  it('falls through to a parent context when a lazy value cannot supply the property', async function () {
+    var output = await render('{#items}{a.b}{/items}', {
+      a: function () { return { b: 'outer' }; },
+      items: [{}]
+    });
+
+    assert.equal(output, 'outer');
+  });
+
+  it('renders nothing when a lazy value resolves to nothing', async function () {
+    assert.equal(await render('{a.b}', { a: async function () { return null; } }), '');
+  });
+
+  it('rejects when a lazy value part-way along the path rejects', async function () {
+    await rejects(render('{a.b}', {
+      a: async function () {
+        throw new Error('nope');
+      }
+    }), /nope/);
+  });
+});

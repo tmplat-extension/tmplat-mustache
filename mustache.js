@@ -424,6 +424,21 @@ Scanner.prototype.scanUntil = function scanUntil (re) {
 };
 
 /**
+ * Resolves a lazily produced value by calling it, if it is a function, and
+ * awaiting it, if the result is thenable.
+ *
+ * Only one level is unwrapped, matching what `Context.lookup` has always done
+ * at the end of a name. A *nested* function - a section lambda referenced as a
+ * plain name tag - is unwrapped separately by `Writer.prototype.resolveValue`.
+ */
+async function resolveLazyValue (value, view) {
+  if (isFunction(value))
+    value = value.call(view);
+
+  return isThenable(value) ? await value : value;
+}
+
+/**
  * Represents a rendering context by wrapping a view object and
  * maintaining a reference to the parent context.
  */
@@ -479,6 +494,21 @@ Context.prototype.lookup = async function lookup (name) {
          * of an autoboxed primitive, such as the length of a string.
          **/
         while (intermediateValue != null && index < names.length) {
+          /**
+           * A value part-way along the path may itself be lazy - a function,
+           * or a promise for one - and its properties cannot be read until it
+           * has been resolved. Resolving here, before the property is read,
+           * is what allows a full path such as `a.b.c` to descend through a
+           * lazily produced `a` rather than reading `b` off the function
+           * object and silently finding nothing.
+           *
+           * The final value is deliberately left alone: the loop reads it and
+           * exits, leaving it to be resolved below along with the non-dotted
+           * case, so that a function at the end of a path still behaves as a
+           * higher-order section rather than being called here.
+           */
+          intermediateValue = await resolveLazyValue(intermediateValue, this.view);
+
           if (index === names.length - 1)
             lookupHit = (
               hasProperty(intermediateValue, names[index])
@@ -523,10 +553,7 @@ Context.prototype.lookup = async function lookup (name) {
     cache[cacheKey] = value;
   }
 
-  if (isFunction(value))
-    value = value.call(this.view);
-
-  return isThenable(value) ? await value : value;
+  return await resolveLazyValue(value, this.view);
 };
 
 /**
@@ -789,7 +816,7 @@ Writer.prototype.getConfigEscape = function getConfigEscape (config) {
 
 var mustache = {
   name: 'mustache.js',
-  version: '5.0.0',
+  version: '5.1.0',
   tags: [ '{', '}' ],
   clearCache: undefined,
   escape: undefined,

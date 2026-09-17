@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+* Functions and promises are now resolved *part-way along* a dotted name, not only at the end of one. `{a.b}` where
+  `a` is a function, a promise, or an async function now descends into the resolved value instead of reading `b` off
+  the unresolved function object and rendering nothing. This makes dot notation usable against a view whose entries
+  are lazy, which was the last place promises were not awaited. The value at the end of the path is still left alone,
+  so a function there keeps its section-lambda behaviour.
+
+  Note that each distinct path re-invokes the lazy value it descends through — `{a.b}{a.c}` calls `a` twice, whereas
+  `{#a}{b}{c}{/a}` calls it once — because `Context`'s cache is keyed on the whole name. A view that does expensive
+  work in an entry should memoise it.
+
 ## [5.0.0] / 16 September 2026
 
 First release of `tmplat-mustache`, a fork of [mustache.js](https://github.com/janl/mustache.js) 4.2.0 built for the
